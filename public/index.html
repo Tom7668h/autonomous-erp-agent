@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="de" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Autonomous ERP & Support Agent | ReAct State Machine</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              900: '#312e81',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Alpine.js CDN -->
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.3/dist/cdn.min.js"></script>
+  <style>
+    [x-cloak] { display: none !important; }
+    pre, code { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col font-sans" x-data="erpApp()" x-init="initApp()" x-cloak>
+
+  <!-- Top Navigation Header -->
+  <header class="border-b border-slate-800 bg-slate-900/90 backdrop-blur sticky top-0 z-50 px-6 py-3.5">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-emerald-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <svg class="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z" />
+          </svg>
+        </div>
+        <div>
+          <div class="flex items-center space-x-2">
+            <h1 class="text-lg font-bold tracking-tight text-white">Autonomous ERP Support Agent</h1>
+            <span class="text-xs px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-mono">v1.0 ReAct</span>
+          </div>
+          <p class="text-xs text-slate-400">Multi-Step AI Agent • 4 SQL-Tools • Dual Execution Mode • n8n Webhook</p>
+        </div>
+      </div>
+
+      <!-- Controls & Mode Selector -->
+      <div class="flex items-center space-x-3">
+        <div class="flex items-center bg-slate-800/80 p-1 rounded-lg border border-slate-700/60 text-xs">
+          <button 
+            @click="setProvider('mock')" 
+            :class="provider === 'mock' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'"
+            class="px-3 py-1.5 rounded-md font-medium transition">
+            Deterministic Mock (Zero-Config)
+          </button>
+          <button 
+            @click="setProvider('openai')" 
+            :class="provider === 'openai' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'"
+            class="px-3 py-1.5 rounded-md font-medium transition">
+            Live LLM API
+          </button>
+        </div>
+
+        <button 
+          @click="showInfoModal = true" 
+          title="Architektur & Leitfaden anzeigen"
+          class="flex items-center space-x-1.5 px-3 py-1.5 bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 hover:text-white rounded-lg border border-indigo-700/60 text-xs font-medium transition shadow-sm">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>📖 System-Guide & Info</span>
+        </button>
+
+        <button 
+          @click="resetDatabase()" 
+          title="Setzt die Beispieldatenbank auf den Ursprungszustand zurück"
+          class="flex items-center space-x-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg border border-slate-700 text-xs font-medium transition">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+          </svg>
+          <span>Reset DB</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Scenario Quick-Launcher Bar -->
+  <div class="bg-slate-900/50 border-b border-slate-800/80 px-6 py-2.5">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center gap-2">
+      <span class="text-xs font-semibold text-slate-400 uppercase tracking-wider mr-1">1-Klick-Szenarien:</span>
+      
+      <button 
+        @click="runScenario('scenario_1_overbooking')"
+        :disabled="isLoading"
+        class="group flex items-center space-x-2 text-xs bg-rose-950/40 hover:bg-rose-900/50 text-rose-300 border border-rose-800/60 hover:border-rose-700 px-3 py-1.5 rounded-lg transition disabled:opacity-50">
+        <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+        <span class="font-medium">1. Lieferverzögerung ORD-9821 (Deadlock & Überbuchung)</span>
+      </button>
+
+      <button 
+        @click="runScenario('scenario_2_tracking')"
+        :disabled="isLoading"
+        class="flex items-center space-x-2 text-xs bg-emerald-950/40 hover:bg-emerald-900/50 text-emerald-300 border border-emerald-800/60 hover:border-emerald-700 px-3 py-1.5 rounded-lg transition disabled:opacity-50">
+        <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+        <span class="font-medium">2. Sendungsstatus ORD-4412 (DHL Shipped)</span>
+      </button>
+
+      <button 
+        @click="runScenario('scenario_3_inventory')"
+        :disabled="isLoading"
+        class="flex items-center space-x-2 text-xs bg-amber-950/40 hover:bg-amber-900/50 text-amber-300 border border-amber-800/60 hover:border-amber-700 px-3 py-1.5 rounded-lg transition disabled:opacity-50">
+        <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+        <span class="font-medium">3. Bestandsprüfung SKU-7740 & Zulauf-ETA</span>
+      </button>
+
+      <button 
+        @click="runScenario('scenario_4_ean')"
+        :disabled="isLoading"
+        class="flex items-center space-x-2 text-xs bg-indigo-950/40 hover:bg-indigo-900/50 text-indigo-300 border border-indigo-800/60 hover:border-indigo-700 px-3 py-1.5 rounded-lg transition disabled:opacity-50">
+        <span class="w-2 h-2 rounded-full bg-indigo-500"></span>
+        <span class="font-medium">4. EAN-Prüfsummenfehler SKU-5501</span>
+      </button>
+    </div>
+  </div>
+
+  <!-- Main Content Grid -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+    <!-- LEFT COLUMN: Chat & Query Console (5 Cols) -->
+    <div class="lg:col-span-5 flex flex-col bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
+      <!-- Chat Header -->
+      <div class="px-4 py-3 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center space-x-2">
+          <div class="w-2.5 h-2.5 rounded-full" :class="isLoading ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'"></div>
+          <span class="text-sm font-semibold text-white">Agent Dialogue Console</span>
+        </div>
+        <span class="text-xs text-slate-400 font-mono" x-text="activeSessionId || 'No active session'"></span>
+      </div>
+
+      <!-- Messages Stream -->
+      <div class="flex-1 p-4 overflow-y-auto space-y-4 min-h-[420px] max-h-[600px]" id="chatContainer">
+        <!-- Welcome Prompt -->
+        <div class="bg-slate-800/60 border border-slate-700/50 rounded-lg p-3 text-xs leading-relaxed text-slate-300">
+          <p class="font-semibold text-slate-200 mb-1">🤖 Willkommen beim Autonomous ERP Support Agent!</p>
+          <p>Ich verarbeite Supportanfragen nach dem <strong>ReAct-Muster</strong>: Ich analysiere das Problem, führe reale SQL-Abfragen auf der Datenbank aus und schlage bei Bedarf sichere Korrektur-Patches vor.</p>
+          <div class="mt-2 text-slate-400">
+            Wähle oben ein 1-Klick-Szenario oder tippe eine eigene Frage ein.
+          </div>
+        </div>
+
+        <!-- Chat History -->
+        <template x-for="(msg, idx) in chatHistory" :key="idx">
+          <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+            <div 
+              :class="msg.role === 'user' ? 'bg-indigo-600 text-white rounded-tr-none' : 'bg-slate-800 border border-slate-700 text-slate-200 rounded-tl-none'"
+              class="max-w-[92%] rounded-xl px-4 py-3 text-xs shadow-md space-y-2">
+              <div class="flex items-center justify-between text-[10px] opacity-75 font-mono mb-1">
+                <span x-text="msg.role === 'user' ? '👤 Support Anfrage' : '🤖 ERP Agent'"></span>
+                <span x-text="msg.time"></span>
+              </div>
+              <div class="whitespace-pre-wrap leading-relaxed" x-html="renderMarkdown(msg.content)"></div>
+
+              <!-- Metadata Badge for Agent Answers -->
+              <template x-if="msg.metrics">
+                <div class="pt-2 mt-2 border-t border-slate-700/80 flex flex-wrap items-center gap-2 text-[10px] text-slate-400 font-mono">
+                  <span class="bg-slate-900/60 px-2 py-0.5 rounded border border-slate-700" x-text="msg.metrics.turnsCount + ' ReAct Turns'"></span>
+                  <span class="bg-slate-900/60 px-2 py-0.5 rounded border border-slate-700" x-text="msg.metrics.durationMs + ' ms'"></span>
+                  <span class="bg-slate-900/60 px-2 py-0.5 rounded border border-slate-700" x-text="msg.metrics.llmProvider"></span>
+                </div>
+              </template>
+            </div>
+          </div>
+        </template>
+
+        <!-- Loading Thinking Indicator -->
+        <div x-show="isLoading" class="flex items-center space-x-3 p-3 bg-indigo-950/30 border border-indigo-800/40 rounded-xl text-indigo-300 text-xs">
+          <svg class="animate-spin h-4 w-4 text-indigo-400" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+          </svg>
+          <span>ReAct Agent führt Gedankengang & SQL-Tools aus...</span>
+        </div>
+      </div>
+
+      <!-- Input Form -->
+      <form @submit.prevent="sendMessage()" class="p-3 bg-slate-850 border-t border-slate-800 flex gap-2">
+        <input 
+          type="text" 
+          x-model="inputQuery" 
+          :disabled="isLoading"
+          placeholder="z.B. Wie ist der Status von ORD-9821?" 
+          class="flex-1 bg-slate-950 border border-slate-700 focus:border-indigo-500 rounded-lg px-3 py-2 text-xs text-white placeholder-slate-500 outline-none transition disabled:opacity-50"
+        />
+        <button 
+          type="submit" 
+          :disabled="isLoading || !inputQuery.trim()" 
+          class="bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg text-xs transition flex items-center space-x-1.5 shadow">
+          <span>Senden</span>
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14 5l7 7m0 0l-7 7m7-7H3" />
+          </svg>
+        </button>
+      </form>
+    </div>
+
+    <!-- RIGHT COLUMN: Thought-Trace Visualizer & ERP Explorer (7 Cols) -->
+    <div class="lg:col-span-7 flex flex-col space-y-6">
+      
+      <!-- Live Thought-Trace & SQL Inspector Card -->
+      <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
+        <div class="px-4 py-3 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+          <div class="flex items-center space-x-2">
+            <svg class="w-4 h-4 text-indigo-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+            <span class="text-sm font-semibold text-white">Live Thought-Trace & SQL-Inspector</span>
+          </div>
+          <span class="text-xs px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono" x-text="currentSteps.length + ' Steps protokolliert'"></span>
+        </div>
+
+        <div class="p-4 overflow-y-auto max-h-[380px] space-y-3">
+          <template x-if="currentSteps.length === 0">
+            <div class="text-center py-10 text-slate-500 text-xs font-mono">
+              [Noch keine Schritte vorhanden. Starte ein Szenario, um den ReAct-Gedankengang zu sehen.]
+            </div>
+          </template>
+
+          <template x-for="step in currentSteps" :key="step.step">
+            <div class="border border-slate-800 bg-slate-950/60 rounded-lg p-3 text-xs space-y-2 hover:border-slate-700 transition">
+              <!-- Step Header -->
+              <div class="flex items-center justify-between font-mono">
+                <span class="text-indigo-400 font-bold flex items-center space-x-1.5">
+                  <span class="w-5 h-5 rounded-full bg-indigo-950 border border-indigo-800 flex items-center justify-center text-[10px]" x-text="step.step"></span>
+                  <span>Turn <span x-text="step.step"></span></span>
+                </span>
+                <template x-if="step.action">
+                  <span class="bg-indigo-900/30 text-indigo-300 border border-indigo-700/50 px-2 py-0.5 rounded text-[10px]">
+                    Tool: <span class="font-bold" x-text="step.action.toolName"></span>
+                  </span>
+                </template>
+              </div>
+
+              <!-- Thought -->
+              <div class="text-slate-300 bg-slate-900/80 p-2.5 rounded border border-slate-800/80">
+                <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center space-x-1">
+                  <span>🧠 Gedankengang (Thought):</span>
+                </div>
+                <p class="leading-relaxed" x-text="step.thought"></p>
+              </div>
+
+              <!-- Action & Input -->
+              <template x-if="step.action">
+                <div class="bg-slate-900/60 p-2 rounded border border-slate-800/60 font-mono text-[11px]">
+                  <span class="text-slate-400 font-semibold">⚡ Action Args: </span>
+                  <span class="text-emerald-400" x-text="JSON.stringify(step.action.input)"></span>
+                </div>
+              </template>
+
+              <!-- Executed SQL Query (Inspector) -->
+              <template x-if="step.observation && step.observation.executedSql">
+                <div class="bg-slate-950 p-2.5 rounded border border-slate-800 font-mono text-[11px] overflow-x-auto">
+                  <div class="text-[10px] uppercase font-bold text-amber-400 mb-1 flex items-center justify-between">
+                    <span>💾 Ausgeführtes SQL Prepared Statement:</span>
+                    <span class="text-[9px] text-slate-500">SQLite Engine</span>
+                  </div>
+                  <code class="text-amber-200" x-text="step.observation.executedSql"></code>
+                </div>
+              </template>
+
+              <!-- Observation -->
+              <template x-if="step.observation">
+                <div class="bg-slate-900/80 p-2.5 rounded border border-slate-800/80">
+                  <div class="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                    <span>👁️ Beobachtung (Observation):</span>
+                  </div>
+                  <pre class="text-[11px] text-slate-300 overflow-x-auto leading-normal" x-text="JSON.stringify(step.observation.result, null, 2)"></pre>
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- ERP Data & 2nd-Level Hub Tabs -->
+      <div class="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
+        <!-- Tabs Header -->
+        <div class="px-4 py-2 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+          <div class="flex space-x-2">
+            <button 
+              @click="activeTab = 'tickets'" 
+              :class="activeTab === 'tickets' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center space-x-1.5">
+              <span>🎫 2nd-Level Tickets & Patches</span>
+              <span class="bg-indigo-900/80 text-[10px] px-1.5 py-0.2 rounded-full" x-text="tickets.length"></span>
+            </button>
+            <button 
+              @click="activeTab = 'inventory'" 
+              :class="activeTab === 'inventory' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center space-x-1.5">
+              <span>📦 Lagerbestand (Inventory)</span>
+            </button>
+            <button 
+              @click="activeTab = 'orders'" 
+              :class="activeTab === 'orders' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center space-x-1.5">
+              <span>📋 Aufträge (Orders)</span>
+            </button>
+            <button 
+              @click="activeTab = 'errors'" 
+              :class="activeTab === 'errors' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center space-x-1.5">
+              <span>⚠️ Sync Error Logs</span>
+            </button>
+            <button 
+              @click="activeTab = 'guide'" 
+              :class="activeTab === 'guide' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'"
+              class="px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center space-x-1.5">
+              <span>📖 System-Erklärung</span>
+            </button>
+          </div>
+
+          <button @click="refreshErpData()" title="Daten aktualisieren" class="text-slate-400 hover:text-white p-1">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+            </svg>
+          </button>
+        </div>
+
+        <div class="p-4 overflow-x-auto max-h-[360px]">
+          <!-- TAB 1: Support Tickets & SQL Patches -->
+          <div x-show="activeTab === 'tickets'" class="space-y-3">
+            <template x-for="t in tickets" :key="t.ticket_id">
+              <div class="border border-slate-800 bg-slate-950 rounded-lg p-3.5 space-y-2 text-xs">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center space-x-2">
+                    <span class="font-mono font-bold text-indigo-400" x-text="t.ticket_id"></span>
+                    <span 
+                      :class="t.resolution_status === 'CLOSED' ? 'bg-emerald-950 text-emerald-400 border-emerald-800' : 'bg-amber-950 text-amber-400 border-amber-800'"
+                      class="px-2 py-0.5 rounded text-[10px] font-mono border" 
+                      x-text="t.resolution_status">
+                    </span>
+                    <span class="text-slate-500 font-mono text-[10px]" x-text="t.created_at"></span>
+                  </div>
+
+                  <!-- 1-Click Apply Patch Button -->
+                  <template x-if="t.recommended_sql_patch && t.patch_executed === 0">
+                    <button 
+                      @click="applyPatch(t.ticket_id)"
+                      :disabled="isPatching"
+                      class="bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white font-medium px-3 py-1 rounded text-xs transition flex items-center space-x-1 shadow">
+                      <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>1-Klick SQL-Patch ausführen</span>
+                    </button>
+                  </template>
+
+                  <template x-if="t.patch_executed === 1">
+                    <span class="text-emerald-400 font-medium flex items-center space-x-1 text-xs">
+                      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7" />
+                      </svg>
+                      <span>Patch ausgeführt & verifiziert</span>
+                    </span>
+                  </template>
+                </div>
+
+                <div class="text-slate-300">
+                  <strong class="text-slate-400">Anfrage:</strong> <span x-text="t.customer_query"></span>
+                </div>
+                <div class="text-slate-300">
+                  <strong class="text-slate-400">Diagnose:</strong> <span x-text="t.agent_summary"></span>
+                </div>
+
+                <!-- Proposed SQL Patch Box -->
+                <template x-if="t.recommended_sql_patch">
+                  <div class="bg-slate-900 border border-slate-800 rounded p-2.5 font-mono text-[11px]">
+                    <div class="text-[10px] text-indigo-400 uppercase font-bold mb-1">Vom Agenten vorgeschlagener SQL-Patch:</div>
+                    <code class="text-emerald-300" x-text="t.recommended_sql_patch"></code>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+
+          <!-- TAB 2: Inventory Table -->
+          <div x-show="activeTab === 'inventory'">
+            <table class="w-full text-left text-xs text-slate-300 font-mono">
+              <thead class="text-slate-400 border-b border-slate-800 uppercase text-[10px]">
+                <tr>
+                  <th class="py-2">SKU</th>
+                  <th>Artikelbezeichnung</th>
+                  <th>Ist</th>
+                  <th>Res.</th>
+                  <th>Verf.</th>
+                  <th>Lagerfach</th>
+                  <th>Zulauf ETA</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60">
+                <template x-for="item in inventory" :key="item.sku">
+                  <tr class="hover:bg-slate-800/40">
+                    <td class="py-2 text-indigo-300 font-bold" x-text="item.sku"></td>
+                    <td class="font-sans text-white" x-text="item.description"></td>
+                    <td x-text="item.physical_stock"></td>
+                    <td x-text="item.reserved_stock"></td>
+                    <td>
+                      <span 
+                        :class="item.available_stock < 0 ? 'text-rose-400 font-bold bg-rose-950/60 px-1.5 py-0.5 rounded border border-rose-800' : 'text-emerald-400 font-bold'"
+                        x-text="item.available_stock">
+                      </span>
+                    </td>
+                    <td x-text="item.warehouse_bin"></td>
+                    <td class="text-slate-400" x-text="item.supplier_incoming_qty ? item.supplier_incoming_qty + ' Stk (' + item.supplier_eta + ')' : '-'"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- TAB 3: Orders Table -->
+          <div x-show="activeTab === 'orders'">
+            <table class="w-full text-left text-xs text-slate-300 font-mono">
+              <thead class="text-slate-400 border-b border-slate-800 uppercase text-[10px]">
+                <tr>
+                  <th class="py-2">Auftrag</th>
+                  <th>Kunde</th>
+                  <th>Status</th>
+                  <th>ERP-Sync</th>
+                  <th>Carrier</th>
+                  <th>Tracking</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60">
+                <template x-for="ord in orders" :key="ord.order_id">
+                  <tr class="hover:bg-slate-800/40">
+                    <td class="py-2 text-indigo-300 font-bold" x-text="ord.order_id"></td>
+                    <td class="font-sans text-white" x-text="ord.customer_name"></td>
+                    <td>
+                      <span 
+                        :class="{
+                          'text-amber-400 bg-amber-950/40 border border-amber-800 px-1.5 py-0.5 rounded': ord.status === 'ON_HOLD',
+                          'text-emerald-400 bg-emerald-950/40 border border-emerald-800 px-1.5 py-0.5 rounded': ord.status === 'SHIPPED',
+                          'text-slate-300': ord.status === 'PROCESSING'
+                        }"
+                        x-text="ord.status">
+                      </span>
+                    </td>
+                    <td>
+                      <span 
+                        :class="ord.erp_sync_status === 'ERROR' ? 'text-rose-400 font-bold' : 'text-emerald-400'"
+                        x-text="ord.erp_sync_status">
+                      </span>
+                    </td>
+                    <td class="font-sans" x-text="ord.tracking_carrier || '-'"></td>
+                    <td class="text-slate-400" x-text="ord.tracking_code || '-'"></td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- TAB 4: Sync Error Logs -->
+          <div x-show="activeTab === 'errors'">
+            <table class="w-full text-left text-xs text-slate-300 font-mono">
+              <thead class="text-slate-400 border-b border-slate-800 uppercase text-[10px]">
+                <tr>
+                  <th class="py-2">Fehlercode</th>
+                  <th>Entity</th>
+                  <th>Meldung</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-800/60">
+                <template x-for="err in syncErrors" :key="err.error_id">
+                  <tr class="hover:bg-slate-800/40">
+                    <td class="py-2 text-rose-400 font-bold" x-text="err.error_code"></td>
+                    <td class="text-indigo-300" x-text="err.entity_id"></td>
+                    <td class="font-sans text-slate-300 max-w-xs truncate" :title="err.error_message" x-text="err.error_message"></td>
+                    <td>
+                      <span 
+                        :class="err.resolved === 1 ? 'text-emerald-400 bg-emerald-950 px-1.5 py-0.5 rounded' : 'text-rose-400 bg-rose-950 px-1.5 py-0.5 rounded'"
+                        x-text="err.resolved === 1 ? 'Behoben' : 'Offen'">
+                      </span>
+                    </td>
+                  </tr>
+                </template>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- TAB 5: System-Erklärung & Architektur-Guide -->
+          <div x-show="activeTab === 'guide'" class="space-y-4 text-xs text-slate-300 leading-relaxed font-sans">
+            <div class="bg-indigo-950/30 border border-indigo-800/50 rounded-lg p-3.5 space-y-2">
+              <h3 class="text-sm font-bold text-white flex items-center space-x-2">
+                <span>🤖 Wie funktioniert dieser autonome ERP Support Agent?</span>
+              </h3>
+              <p>
+                Im Gegensatz zu herkömmlichen Chatbots arbeitet dieser Agent mit einer <strong>ReAct State Machine</strong> (*Reasoning + Acting*). Er generiert nicht einfach nur Text, sondern führt echte, vorbereitete SQL-Statements auf der relationalen SQLite-Datenbank aus und reagiert auf die tatsächlichen Datenbankwerte.
+              </p>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-1.5">
+                <div class="text-indigo-400 font-bold uppercase text-[10px] tracking-wider">1. ReAct-Zyklus (State-Machine)</div>
+                <ul class="space-y-1 text-slate-300 list-disc ml-4">
+                  <li><strong>Thought:</strong> Agent begründet logisch den nächsten Diagnoseschritt.</li>
+                  <li><strong>Action:</strong> Wählt zielgerichtet 1 von 4 SQL-Tools.</li>
+                  <li><strong>Observation:</strong> Wertet Datenbankergebnisse & Fehlerflags aus.</li>
+                  <li><strong>Final Answer:</strong> Liefert präzise Analyse oder 2nd-Level Ticket.</li>
+                </ul>
+              </div>
+
+              <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-1.5">
+                <div class="text-emerald-400 font-bold uppercase text-[10px] tracking-wider">2. Die 4 echten SQL-Tools</div>
+                <ul class="space-y-1 text-slate-300 list-disc ml-4">
+                  <li><code>lookup_order_status</code>: Auftrag, Positionen & Sync-Status.</li>
+                  <li><code>check_inventory_and_supplier_feed</code>: Physischer Bestand vs. Reservierung & Zulauf.</li>
+                  <li><code>analyze_erp_sync_error</code>: Diagnose von Deadlocks & EAN-Prüfsummen.</li>
+                  <li><code>escalate_to_2nd_level</code>: Erstellt Ticket mit sicherem SQL-Patch.</li>
+                </ul>
+              </div>
+
+              <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-1.5">
+                <div class="text-amber-400 font-bold uppercase text-[10px] tracking-wider">3. Sicherheits-Gatekeeper (SQL-Sanitizer)</div>
+                <p class="text-slate-300">
+                  Jeder KI-generierte SQL-Patch wird vor Ausführung strikt validiert: Nur <code>UPDATE</code>/<code>INSERT</code> auf erlaubte Tabellen, zwingende <code>WHERE</code>-Klausel (Schutz vor Bulk-Wipes), striktes Verbot von <code>DROP</code>, <code>DELETE</code>, <code>TRUNCATE</code>, <code>;</code> oder SQL-Kommentaren.
+                </p>
+              </div>
+
+              <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-1.5">
+                <div class="text-rose-400 font-bold uppercase text-[10px] tracking-wider">4. Dual-Execution Mode (GitHub Zero-Setup)</div>
+                <p class="text-slate-300">
+                  Der integrierte <strong>deterministische Mock-LLM</strong> erlaubt jedem Recruiter / Reviewer, alle 4 Szenarien sofort nach <code>git clone</code> und <code>npm run dev</code> ohne OpenAI- oder Gemini-API-Key vollumfänglich und realitätsnah zu testen.
+                </p>
+              </div>
+            </div>
+
+            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 flex items-center justify-between">
+              <div>
+                <span class="font-bold text-white">Ausführlichen System-Guide mit Architektur-Grafik öffnen:</span>
+                <p class="text-slate-400 text-[11px]">Detaillierte Schritt-für-Schritt Demo-Anleitung & n8n-Workflow-Dokumentation</p>
+              </div>
+              <button 
+                @click="showInfoModal = true"
+                class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium px-3 py-1.5 rounded-lg text-xs transition shadow">
+                Guide als Modal öffnen
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Architecture & System Guide Modal Dialog -->
+  <div 
+    x-show="showInfoModal" 
+    @keydown.escape.window="showInfoModal = false"
+    class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm"
+    style="display: none;">
+    
+    <div 
+      @click.outside="showInfoModal = false"
+      class="bg-slate-900 border border-slate-700/80 rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      
+      <!-- Modal Header -->
+      <div class="px-6 py-4 bg-slate-850 border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+          <div class="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="text-base font-bold text-white">Autonomous ERP Support Agent • System Guide</h2>
+            <p class="text-xs text-slate-400">Architektur, ReAct State-Machine, SQL-Tools & Demo-Walkthrough</p>
+          </div>
+        </div>
+
+        <button 
+          @click="showInfoModal = false" 
+          class="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Modal Sub-Tabs -->
+      <div class="px-6 py-2 bg-slate-900 border-b border-slate-800 flex space-x-2 text-xs overflow-x-auto">
+        <button 
+          @click="activeGuideTab = 'overview'" 
+          :class="activeGuideTab === 'overview' ? 'text-indigo-400 border-b-2 border-indigo-400 font-bold' : 'text-slate-400 hover:text-slate-200'"
+          class="py-2 px-3 transition whitespace-nowrap">
+          1. Vision & Problem
+        </button>
+        <button 
+          @click="activeGuideTab = 'react'" 
+          :class="activeGuideTab === 'react' ? 'text-indigo-400 border-b-2 border-indigo-400 font-bold' : 'text-slate-400 hover:text-slate-200'"
+          class="py-2 px-3 transition whitespace-nowrap">
+          2. ReAct State-Machine
+        </button>
+        <button 
+          @click="activeGuideTab = 'tools'" 
+          :class="activeGuideTab === 'tools' ? 'text-indigo-400 border-b-2 border-indigo-400 font-bold' : 'text-slate-400 hover:text-slate-200'"
+          class="py-2 px-3 transition whitespace-nowrap">
+          3. Die 4 SQL-Tools
+        </button>
+        <button 
+          @click="activeGuideTab = 'security'" 
+          :class="activeGuideTab === 'security' ? 'text-indigo-400 border-b-2 border-indigo-400 font-bold' : 'text-slate-400 hover:text-slate-200'"
+          class="py-2 px-3 transition whitespace-nowrap">
+          4. SQL-Sanitizer (Security)
+        </button>
+        <button 
+          @click="activeGuideTab = 'demo'" 
+          :class="activeGuideTab === 'demo' ? 'text-indigo-400 border-b-2 border-indigo-400 font-bold' : 'text-slate-400 hover:text-slate-200'"
+          class="py-2 px-3 transition whitespace-nowrap">
+          5. Demo-Walkthrough (Reviewer)
+        </button>
+        <button 
+          @click="activeGuideTab = 'n8n'" 
+          :class="activeGuideTab === 'n8n' ? 'text-indigo-400 border-b-2 border-indigo-400 font-bold' : 'text-slate-400 hover:text-slate-200'"
+          class="py-2 px-3 transition whitespace-nowrap">
+          6. n8n Enterprise Pipeline
+        </button>
+      </div>
+
+      <!-- Modal Body (Scrollable) -->
+      <div class="p-6 overflow-y-auto space-y-4 text-xs text-slate-300 leading-relaxed max-h-[60vh]">
+
+        <!-- TAB 1: Vision & Problem -->
+        <div x-show="activeGuideTab === 'overview'" class="space-y-3">
+          <div class="bg-indigo-950/30 border border-indigo-800/40 rounded-xl p-4 space-y-2">
+            <h3 class="text-sm font-bold text-white">Das Problem im B2B-Großhandel & E-Commerce</h3>
+            <p>
+              Klassische LLM-Chatbots versagen in der Unternehmenspraxis: Sie besitzen keinen Zugriff auf relationale ERP-Daten, kennen keine Live-Lagerbestände und verstehen keine technischen Synchronisationsfehler (z. B. SQL-Deadlocks, Diskrepanzen zwischen Wawi und Shopware-Bestand). 
+            </p>
+            <p>
+              Support-Mitarbeiter im 1st-Level verbringen bis zu 70 % ihrer Zeit mit monotonen Routine-Lookups in der SQL-Datenbank oder müssen Tickets zeitaufwendig an den 2nd-Level-Support (Entwickler/DBAs) weiterleiten.
+            </p>
+          </div>
+
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
+            <h3 class="text-sm font-bold text-white">Die Lösung: Autonomer ERP-Agent jenseits naiver Wrapper</h3>
+            <p>
+              Dieser Agent implementiert eine <strong>vollwertige ReAct State-Machine</strong> mit 4 realen SQL-Tools, einem deterministischen Mock-Fallback (ermöglicht sofortigen Test auf GitHub ohne API-Key) und einem Sicherheits-Gatekeeper zur Erzeugung sicherer SQL-Patches.
+            </p>
+          </div>
+        </div>
+
+        <!-- TAB 2: ReAct State-Machine -->
+        <div x-show="activeGuideTab === 'react'" class="space-y-3">
+          <p>
+            Die ReAct-Schleife (<strong>Reasoning + Acting</strong>) führt den Agenten iterativ durch die Untersuchung:
+          </p>
+          <div class="grid grid-cols-1 md:grid-cols-4 gap-3 text-center">
+            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div class="w-8 h-8 mx-auto rounded-full bg-indigo-950 border border-indigo-700 flex items-center justify-center font-bold text-indigo-400 mb-2">1</div>
+              <div class="font-bold text-white">Thought</div>
+              <p class="text-slate-400 text-[11px] mt-1">Interne Deduktion & Planung des nächsten Schritts</p>
+            </div>
+            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div class="w-8 h-8 mx-auto rounded-full bg-emerald-950 border border-emerald-700 flex items-center justify-center font-bold text-emerald-400 mb-2">2</div>
+              <div class="font-bold text-white">Action</div>
+              <p class="text-slate-400 text-[11px] mt-1">Aufruf eines typisierten SQL-Tools mit Parametern</p>
+            </div>
+            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div class="w-8 h-8 mx-auto rounded-full bg-amber-950 border border-amber-700 flex items-center justify-center font-bold text-amber-400 mb-2">3</div>
+              <div class="font-bold text-white">Observation</div>
+              <p class="text-slate-400 text-[11px] mt-1">Auswertung der tatsächlichen DB-Rückgabewerte</p>
+            </div>
+            <div class="bg-slate-950 p-3 rounded-lg border border-slate-800">
+              <div class="w-8 h-8 mx-auto rounded-full bg-rose-950 border border-rose-700 flex items-center justify-center font-bold text-rose-400 mb-2">4</div>
+              <div class="font-bold text-white">Final Answer</div>
+              <p class="text-slate-400 text-[11px] mt-1">Antwort an Kunden oder 2nd-Level Ticket</p>
+            </div>
+          </div>
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-[11px]">
+            <span class="text-slate-400">Max Turns Guard:</span> Höchstens 5 Zyklen zur Verhinderung von Endlosschleifen oder unkontrollierten API-Kosten.
+          </div>
+        </div>
+
+        <!-- TAB 3: Die 4 SQL-Tools -->
+        <div x-show="activeGuideTab === 'tools'" class="space-y-3">
+          <div class="border border-slate-800 bg-slate-950 p-3 rounded-lg space-y-1">
+            <span class="text-indigo-400 font-mono font-bold">1. lookup_order_status(orderId: string)</span>
+            <p class="text-slate-300">Führt Prepared JOIN über <code>orders</code>, <code>order_items</code> und <code>inventory</code> aus. Ermittelt Kundennamen, Trackinglink, Lieferstatus und etwaige Sync-Stopps (<code>ON_HOLD</code>).</p>
+          </div>
+          <div class="border border-slate-800 bg-slate-950 p-3 rounded-lg space-y-1">
+            <span class="text-indigo-400 font-mono font-bold">2. check_inventory_and_supplier_feed(sku: string)</span>
+            <p class="text-slate-300">Prüft <code>physical_stock</code> gegen <code>reserved_stock</code>. Flaggt kritische Bestandsüberbuchungen (z.B. -4 verfügbar bei SKU-7740) und liefert Lieferanten-Zulaufdaten mit genauer ETA.</p>
+          </div>
+          <div class="border border-slate-800 bg-slate-950 p-3 rounded-lg space-y-1">
+            <span class="text-indigo-400 font-mono font-bold">3. analyze_erp_sync_error(errorCode?, entityId?)</span>
+            <p class="text-slate-300">Sucht in <code>sync_error_logs</code>. Diagnostiziert Fehlerursachen wie <code>ERR_SQL_DEADLOCK_40001</code> oder <code>ERR_INVALID_EAN_CHECK_SUM</code> und empfiehlt konkrete Root-Cause Behebungen.</p>
+          </div>
+          <div class="border border-slate-800 bg-slate-950 p-3 rounded-lg space-y-1">
+            <span class="text-indigo-400 font-mono font-bold">4. escalate_to_2nd_level(customerQuery, diagnosis, sqlPatchSuggestion)</span>
+            <p class="text-slate-300">Schreibt ein Ticket in <code>support_tickets</code> mit Status <code>IN_REVIEW</code>. Validiert den beigefügten SQL-Patch über den <code>SqlSanitizer</code>.</p>
+          </div>
+        </div>
+
+        <!-- TAB 4: SQL-Sanitizer (Security) -->
+        <div x-show="activeGuideTab === 'security'" class="space-y-3">
+          <div class="bg-amber-950/30 border border-amber-800/40 rounded-xl p-4 space-y-2">
+            <h3 class="text-sm font-bold text-amber-200">Sicherheit: Schutz vor bösartigen oder fehlerhaften Patches</h3>
+            <p class="text-slate-300">
+              Ein autonomer Agent darf niemals unkontrolliert SQL in der Produktionsdatenbank ausführen. Der integrierte <code>SqlSanitizer</code> blockiert automatisch:
+            </p>
+          </div>
+          <ul class="space-y-1.5 list-disc ml-5 text-slate-300">
+            <li><strong>Verbot gefährlicher DDL-Befehle:</strong> <code>DROP</code>, <code>TRUNCATE</code>, <code>DELETE</code>, <code>ALTER</code>, <code>CREATE</code> werden sofort abgewiesen.</li>
+            <li><strong>Whitelist von Zieltabellen:</strong> Ausschließlich <code>inventory</code>, <code>orders</code>, <code>sync_error_logs</code> und <code>support_tickets</code>.</li>
+            <li><strong>Zwingende WHERE-Klausel:</strong> Ein <code>UPDATE</code> ohne <code>WHERE</code> (was die gesamte Tabelle überschreiben würde) ist verboten.</li>
+            <li><strong>Injection-Schutz:</strong> Semikolons (<code>;</code>) und SQL-Kommentare (<code>--</code>, <code>/*</code>) sind unzulässig.</li>
+            <li><strong>Transaktions-Isolation:</strong> Das Ausführen des Patches erfolgt in einer atomaren Transaktion (<code>db.transaction()</code>).</li>
+          </ul>
+        </div>
+
+        <!-- TAB 5: Demo-Walkthrough (Reviewer) -->
+        <div x-show="activeGuideTab === 'demo'" class="space-y-3">
+          <h3 class="text-sm font-bold text-white">Schritt-für-Schritt Reviewer-Walkthrough</h3>
+          <ol class="space-y-2.5 list-decimal ml-5 text-slate-300">
+            <li>
+              <strong>1-Klick-Szenario starten:</strong> Klicke oben auf den roten Button <span class="bg-rose-950 text-rose-300 px-1 rounded">"1. Lieferverzögerung ORD-9821"</span>.
+            </li>
+            <li>
+              <strong>Thought-Trace beobachten:</strong> Sieh rechts im Live-Inspector, wie der Agent 4 Turns absolviert, den Deadlock aufdeckt, das Lager prüft und einen SQL-Patch vorschlägt.
+            </li>
+            <li>
+              <strong>Patch ausführen:</strong> Klicke im unteren Bereich unter <span class="bg-indigo-950 text-indigo-300 px-1 rounded">"🎫 2nd-Level Tickets & Patches"</span> auf den grünen Button <span class="bg-emerald-600 text-white px-1.5 py-0.5 rounded">"1-Klick SQL-Patch ausführen"</span>.
+            </li>
+            <li>
+              <strong>Ergebnis verifizieren:</strong> Wechsle auf den Tab <span class="bg-indigo-950 text-indigo-300 px-1 rounded">"📦 Lagerbestand"</span>: Der verfügbare Bestand von <code>SKU-7740</code> springt von <span class="text-rose-400 font-bold">-4</span> auf <span class="text-emerald-400 font-bold">0</span>!
+            </li>
+            <li>
+              <strong>Zurücksetzen:</strong> Klicke oben auf <span class="bg-slate-800 text-slate-200 px-1 rounded">"Reset DB"</span>, um jederzeit von vorne zu testen.
+            </li>
+          </ol>
+        </div>
+
+        <!-- TAB 6: n8n Enterprise Pipeline -->
+        <div x-show="activeGuideTab === 'n8n'" class="space-y-3">
+          <h3 class="text-sm font-bold text-white">n8n Workflow-Automatisierung</h3>
+          <p>
+            Das Repository enthält die Datei <code class="text-indigo-300">n8n-workflow.json</code>, die direkt in jede n8n-Instanz importiert werden kann:
+          </p>
+          <div class="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-2 font-mono text-[11px]">
+            <div>1. Webhook Ingestion: <span class="text-emerald-400">POST http://localhost:3000/api/webhook/n8n/support-ticket</span></div>
+            <div>2. ERP Agent Execution: ReAct Loop wertet die Kundenanfrage aus</div>
+            <div>3. IF Node (needsHumanReview):</div>
+            <div class="ml-4 text-slate-400">├─ True  → Slack-Alert an DBA/DevOps mit Ticket-ID & SQL-Patch</div>
+            <div class="ml-4 text-slate-400">└─ False → Automatisierte E-Mail-Antwort direkt an den Kunden</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-6 py-3 bg-slate-850 border-t border-slate-800 flex justify-end">
+        <button 
+          @click="showInfoModal = false" 
+          class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-lg transition">
+          Verstanden & Schließen
+        </button>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer class="border-t border-slate-800/80 bg-slate-900/60 px-6 py-3 mt-auto">
+    <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between text-xs text-slate-500 font-mono">
+      <div>Autonomous ERP Agent Blueprint • Node.js / TypeScript / SQLite / ReAct State Machine</div>
+      <div class="flex items-center space-x-3">
+        <a href="/api/erp/inventory" target="_blank" class="hover:text-slate-300 underline">API: Inventory</a>
+        <a href="/api/erp/tickets" target="_blank" class="hover:text-slate-300 underline">API: Tickets</a>
+        <a href="/api/health" target="_blank" class="hover:text-slate-300 underline">Health</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="/app.js"></script>
+</body>
+</html>
