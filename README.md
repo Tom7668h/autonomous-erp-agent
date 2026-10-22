@@ -29,12 +29,11 @@ Ein produktionsreifer, autonomer Multi-Step KI-Support-Agent für ERP- und Groß
 - **Dual-Execution Mode (Zero-Friction Evaluation):**
   - **Deterministischer Mock-LLM-Fallback:** Ermöglicht jedem Reviewer auf GitHub, das Projekt nach `git clone` mit `npm run dev` sofort ohne eigenen API-Key vollumfänglich und realitätsnah zu testen.
   - **Live LLM API:** Native Unterstützung für OpenAI (`gpt-4o-mini`) und Google Gemini (`gemini-1.5-flash`).
-- **Interactive Web-Playground:**
+- **Interaktiver Web-Playground:**
   - **Live Thought-Trace:** Visualisiert Gedankengang, aufgerufenes Tool, exakt abgesetztes SQL Prepared Statement und Tabellen-Ergebnis.
   - **4 Instant-Szenario-Presets:** 1-Klick-Ausführung komplexer Fehlerfälle (Überbuchung, Deadlock, Tracking, EAN-Fehler).
   - **2nd-Level Patch Hub:** 1-Klick **"Apply SQL Patch"** führt den vorgeschlagenen Datenbank-Patch in einer atomaren SQLite-Transaktion aus und aktualisiert die Bestände in Echtzeit.
   - **Live ERP Explorer:** Übersicht über `inventory`, `orders`, `sync_error_logs` und `support_tickets`.
-  - **Integrierter System-Guide & Architektur-Modal:** Direkt auf der Weboberfläche abrufbar via Button *"📖 System-Guide & Info"*.
 - **n8n Workflow Automation:** Enthält eine produktionsreife `n8n-workflow.json` und den Webhook-Endpunkt `POST /api/webhook/n8n/support-ticket`.
 
 ---
@@ -90,20 +89,32 @@ flowchart TD
 
 ---
 
-### 🚀 Schnellstart
+### 🚀 Schnellstart & Installation
 
+#### Voraussetzungen
+- Node.js 20+ (LTS)
+
+#### 1. Repository klonen & Abhängigkeiten installieren
 ```bash
 git clone https://github.com/Tom7668h/autonomous-erp-agent.git
 cd autonomous-erp-agent
 npm install
-npm run dev
 ```
 
-Dashboard im Browser öffnen: 👉 **http://localhost:3000**
+#### 2. Server starten (Web-Playground auf Port 3000)
+```bash
+npm run dev
+```
+Playground im Browser öffnen: 👉 **http://localhost:3000**
+
+#### 3. Automatisierte Tests ausführen
+```bash
+npm test
+```
 
 ---
 
-### 🧪 Tests
+### 🧪 Test-Verifikation
 ```bash
 npm test
 ```
@@ -118,6 +129,19 @@ npm test
 ```
 
 ---
+
+### 🔄 n8n Workflow Automation
+Das Projekt beinhaltet eine vollständige `n8n-workflow.json`:
+1. **Webhook-Trigger:** Empfängt Support-Tickets aus ERP-/CRM-Systemen.
+2. **Agent-Node:** Übergibt die Anfrage an `POST /api/webhook/n8n/support-ticket` und nutzt die 4 SQL-Tools.
+3. **Entscheidungsknoten (`needsHumanReview`):**
+   - **True (2nd-Level):** Sendet Slack-Alert mit Ticket-ID, Fehlerursache und vorgeschlagenem SQL-Patch an DevOps/DBA.
+   - **False (1st-Level):** Sendet automatisierte E-Mail-Antwort direkt an den Kunden.
+
+---
+
+### 📄 Lizenz
+MIT-Lizenz. Erstellt von [Tom7668h](https://github.com/Tom7668h).
 
 <br><br>
 
@@ -134,32 +158,123 @@ A production-grade, autonomous multi-step AI support agent for enterprise ERP an
 - **Autonomous ReAct State-Machine:** Not a trivial chatbot prompt wrapper, but a resilient execution loop bounded to a maximum of 5 iterations with dynamic tool dispatching and memory augmentation.
 - **4 SQL-Powered Prepared Statement Tools:**
   1. `lookup_order_status`: Queries order headers, line items, ERP sync statuses, and carrier tracking info.
-  2. `check_inventory_and_supplier_feed`: Retrieves physical stock, allocated reservations, negative stock discrepancies, and inbound supplier shipments with ETAs.
-  3. `analyze_erp_sync_error`: Diagnoses real-world ERP error codes (`ERR_SQL_DEADLOCK_40001`, `ERR_INVENTORY_NEGATIVE_RESERVATION`, etc.) and determines root causes.
+  2. `check_inventory_and_supplier_feed`: Retrieves physical stock, allocated reservations, negative stock discrepancies (`available_stock < 0`), and inbound supplier shipments with ETAs.
+  3. `analyze_erp_sync_error`: Diagnoses real-world ERP error codes (`ERR_SQL_DEADLOCK_40001`, `ERR_INVENTORY_NEGATIVE_RESERVATION`, `ERR_INVALID_EAN_CHECK_SUM`) and determines root causes.
   4. `escalate_to_2nd_level`: Automatically generates 2nd-level tickets containing validated SQL remediation patches.
-- **Strict Security Gatekeeper (`sql-sanitizer`):** AST & regex whitelist: only `UPDATE`/`INSERT` on permitted tables, mandatory `WHERE` clauses, and strict prohibition of `DROP`, `DELETE`, `TRUNCATE`, semicolons, or comments.
-- **Dual-Execution Mode:**
-  - **Deterministic Mock LLM Fallback:** Enables any reviewer on GitHub to clone and test the complete agent immediately without API keys or costs.
+- **Strict Security Gatekeeper (`sql-sanitizer`):** Validates AI-generated SQL patches via AST & regex whitelist: only `UPDATE`/`INSERT` on permitted tables (`inventory`, `orders`, etc.), mandatory `WHERE` clauses, and strict prohibition of `DROP`, `DELETE`, `TRUNCATE`, semicolons, or comments.
+- **Dual-Execution Mode (Zero-Friction Evaluation):**
+  - **Deterministic Mock LLM Fallback:** Enables any reviewer on GitHub to clone and test the complete agent immediately with `npm run dev` without API keys or costs.
   - **Live LLM API:** Native support for OpenAI (`gpt-4o-mini`) and Google Gemini (`gemini-1.5-flash`).
 - **Interactive Web Playground:**
-  - Real-time visualization of LLM thought steps, selected tools, SQL prepared statements, and observations.
-  - 1-Click execution of real-world scenarios.
-  - 1-Click **"Apply SQL Patch"** executing approved patches within atomic SQLite transactions.
+  - **Live Thought-Trace:** Real-time visualization of LLM thought steps, selected tools, SQL prepared statements, and observations.
+  - **4 Instant-Scenario Presets:** 1-Click execution of real-world scenarios (Overbooking, Deadlock, Tracking, EAN checksum error).
+  - **2nd-Level Patch Hub:** 1-Click **"Apply SQL Patch"** executing approved patches within atomic SQLite transactions, updating stock live.
+  - **Live ERP Explorer:** Browse `inventory`, `orders`, `sync_error_logs`, and `support_tickets`.
+- **n8n Workflow Automation:** Includes production-ready `n8n-workflow.json` and webhook endpoint `POST /api/webhook/n8n/support-ticket`.
 
 ---
 
-### 🚀 Quickstart
+### 🏗️ System Architecture & ReAct Flow
 
+```mermaid
+flowchart TD
+    subgraph UI ["Modern Web Playground (public/index.html & app.js)"]
+        Preset["1-Click Scenarios (ORD-9821, ORD-4412, SKU-7740, EAN)"]
+        Chat["Agent Dialogue Console"]
+        Trace["Live Thought-Trace Visualizer (SQL Prepared Statements)"]
+        PatchHub["2nd-Level Patch Approver & ERP Data Explorer"]
+    end
+
+    subgraph Backend ["Node.js / Express Server (src/server.ts)"]
+        AgentRoutes["/api/agent (chat, scenario, config)"]
+        ERPRoutes["/api/erp (inventory, orders, tickets, apply-patch, reset)"]
+        WebhookRoutes["/api/webhook/n8n/support-ticket"]
+        
+        subgraph Engine ["ReAct Agent State Machine (src/agent/)"]
+            Loop["AgentEngine (Max 5 Turns Guard)"]
+            subgraph DualLLM ["Dual Execution Engine"]
+                Mock["MockLlmClient (Zero-Config Deterministic)"]
+                Live["OpenAiGeminiClient (Live REST API)"]
+            end
+        end
+
+        subgraph Tools ["4 Real SQL Tools (src/tools/)"]
+            T1["lookup_order_status"]
+            T2["check_inventory_and_supplier_feed"]
+            T3["analyze_erp_sync_error"]
+            T4["escalate_to_2nd_level"]
+        end
+
+        Sanitizer["SQL Sanitizer AST & Regex Guard (src/utils/sql-sanitizer.ts)"]
+        DB[("Embedded SQLite DB (data/erp.db)")]
+    end
+
+    Preset --> Chat
+    Chat --> AgentRoutes
+    AgentRoutes --> Loop
+    Loop --> DualLLM
+    DualLLM -->|Thought & Action Decision| Tools
+    Tools -->|Execute Prepared Statement| DB
+    DB -->|Observation Data| Loop
+    Loop -->|If Patch Proposed| Sanitizer
+    Sanitizer -->|Valid Patch| PatchHub
+    Loop -->|Final Response + Trace Array| UI
+    ERPRoutes --> DB
+    WebhookRoutes --> Loop
+```
+
+---
+
+### 🚀 Quickstart & Installation
+
+#### Prerequisites
+- Node.js 20+ (LTS)
+
+#### 1. Clone Repository & Install Dependencies
 ```bash
 git clone https://github.com/Tom7668h/autonomous-erp-agent.git
 cd autonomous-erp-agent
 npm install
-npm run dev
 ```
 
-Open dashboard: 👉 **http://localhost:3000**
+#### 2. Launch Server (Web Playground on port 3000)
+```bash
+npm run dev
+```
+Open playground in browser: 👉 **http://localhost:3000**
+
+#### 3. Run Automated Tests
+```bash
+npm test
+```
+
+---
+
+### 🧪 Test Verification
+```bash
+npm test
+```
+```text
+ ✓ tests/unit/sql-sanitizer.test.ts (7 tests)
+ ✓ tests/unit/tools.test.ts (6 tests)
+ ✓ tests/unit/agent-engine.test.ts (6 tests)
+ ✓ tests/integration/api.test.ts (6 tests)
+
+ Test Files  4 passed (4)
+      Tests  25 passed (25)
+```
+
+---
+
+### 🔄 n8n Workflow Automation
+The repository includes a production-ready `n8n-workflow.json`:
+1. **Webhook Trigger:** Ingests support tickets from external ERP/CRM systems.
+2. **Agent Node:** Passes requests to `POST /api/webhook/n8n/support-ticket`, invoking the 4 SQL tools.
+3. **Router Node (`needsHumanReview`):**
+   - **True (2nd-Level):** Sends Slack notification with ticket ID, root cause, and SQL remediation patch to DevOps/DBA.
+   - **False (1st-Level):** Dispatches automated resolution email directly to the customer.
 
 ---
 
 ### 📄 License
-MIT © Tom7668h
+MIT License. Created by [Tom7668h](https://github.com/Tom7668h).
